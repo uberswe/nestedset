@@ -2,10 +2,10 @@
 // Use of this source code is governed by a MIT
 // license that can be found in the LICENSE file.
 
-
 package nestedset
 
 import (
+	"encoding/json"
 	"fmt"
 	"testing"
 )
@@ -25,7 +25,7 @@ func createTestNestedSet(t *testing.T) {
 
 	for i := 1; i <= 6; i++ {
 		n := NewNode()
-		n.NodeName = fmt.Sprintf("node %d", i)
+		n.NodeKey = fmt.Sprintf("node %d", i)
 		nodes = append(nodes, n)
 	}
 
@@ -58,13 +58,13 @@ func createTestNestedSet(t *testing.T) {
 
 func checkNode(t *testing.T, node NodeInterface, level, left, right int64) {
 	if node.Level() != level {
-		t.Errorf("Invalid level for node '%s', expected %d, get %d", node.Name(), right, node.Level())
+		t.Errorf("Invalid level for node '%s', expected %d, get %d", node.Key(), right, node.Level())
 	}
 	if node.Left() != left {
-		t.Errorf("Invalid left for node '%s', expected %d, get %d", node.Name(), left, node.Left())
+		t.Errorf("Invalid left for node '%s', expected %d, get %d", node.Key(), left, node.Left())
 	}
 	if node.Right() != right {
-		t.Errorf("Invalid right for node '%s', expected %d, get %d", node.Name(), right, node.Right())
+		t.Errorf("Invalid right for node '%s', expected %d, get %d", node.Key(), right, node.Right())
 	}
 }
 
@@ -92,13 +92,13 @@ func TestNestedSet_Delete(t *testing.T) {
 	}
 
 	if ns.exists(nodes[1]) {
-		t.Fatalf("Error deleting node '%s'", nodes[0].Name())
+		t.Fatalf("Error deleting node '%s'", nodes[0].Key())
 	}
 	if ns.exists(nodes[2]) {
-		t.Fatalf("Error deleting node '%s'", nodes[2].Name())
+		t.Fatalf("Error deleting node '%s'", nodes[2].Key())
 	}
 	if ns.exists(nodes[5]) {
-		t.Fatalf("Error deleting node '%s'", nodes[3].Name())
+		t.Fatalf("Error deleting node '%s'", nodes[3].Key())
 	}
 
 	checkNode(t, nodes[0], 0, 0, 7)
@@ -135,6 +135,27 @@ func TestNestedSet_Branch(t *testing.T) {
 
 }
 
+func TestNestedSet_Marshal(t *testing.T) {
+
+	jsonData := `{"node_1":{"node_4":"Node 4 value"},"node_2":{"node_3":"Node 3 value"}}`
+
+	nSet := NestedSet{}
+
+	err := json.Unmarshal([]byte(jsonData), &nSet)
+	if err != nil {
+		t.Error(err)
+	}
+
+	newJson, err := json.Marshal(&nSet)
+	if err != nil {
+		t.Error(err)
+	}
+
+	if string(newJson) != jsonData {
+		t.Errorf("json data does not match: %s != %s", string(newJson), jsonData)
+	}
+}
+
 func printBranch(branch []NodeInterface) {
 
 	for _, n := range branch {
@@ -142,6 +163,6 @@ func printBranch(branch []NodeInterface) {
 		for i = 0; i < n.Level(); i++ {
 			fmt.Print("..")
 		}
-		fmt.Printf("%s lvl:%d, left:%d, right:%d\n", n.Name(), n.Level(), n.Left(), n.Right())
+		fmt.Printf("%s lvl:%d, left:%d, right:%d\n", n.Key(), n.Level(), n.Left(), n.Right())
 	}
 }

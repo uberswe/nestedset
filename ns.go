@@ -2,7 +2,6 @@
 // Use of this source code is governed by a MIT
 // license that can be found in the LICENSE file.
 
-
 /*
 Package nestedset provides types and functions for manage nested sets.
 
@@ -44,7 +43,7 @@ Usage:
 	}
 
 	// Return your inner name
-	func (t *MySomeType) Name() string {
+	func (t *MySomeType) Key() string {
 		return t.MyName
 	}
 
@@ -54,7 +53,7 @@ Usage:
 	}
 
 	// Set your inner name
-	func (t *MySomeType) SetName(name string) {
+	func (t *MySomeType) SetKey(name string) {
 		t.MyName = name
 	}
 
@@ -79,7 +78,7 @@ Usage:
 		// print tree with indents
 		for _, n := range branch {
 			fmt.Print(strings.Repeat("..", n.Level()))
-			fmt.Printf("%s lvl:%d, left:%d, right:%d\n", n.Name(), n.Level(), n.Left(), n.Right())
+			fmt.Printf("%s lvl:%d, left:%d, right:%d\n", n.Key(), n.Level(), n.Left(), n.Right())
 		}
 	}
 */
@@ -88,6 +87,7 @@ package nestedset
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"sort"
 	"sync"
 )
@@ -109,14 +109,13 @@ type NestedSet struct {
 
 // NewNestedSet creates and returns a new instance of NestedSet with root node.
 func NewNestedSet() *NestedSet {
-
 	s := NestedSet{
 		nodes:    make([]NodeInterface, 0),
 		rootNode: NewNode(),
 	}
 
 	s.rootNode.SetRight(1)
-	s.rootNode.SetName("Root node")
+	s.rootNode.SetKey("root_node")
 	s.nodes = append(s.nodes, s.rootNode)
 
 	return &s
@@ -124,7 +123,122 @@ func NewNestedSet() *NestedSet {
 
 // Overrides json.Marshaller.MarshalJSON().
 func (s NestedSet) MarshalJSON() ([]byte, error) {
-	return json.MarshalIndent(s.nodes, "", "  ")
+	result := map[string]interface{}{}
+	branch := s.Branch(nil) // get full tree
+
+	var keys []string
+	for _, n := range branch {
+		if n.Left() == 0 {
+			continue
+		}
+		if int(n.Level()) > len(keys) {
+			keys = append(keys, n.Key())
+		} else {
+			diff := len(keys) - int(n.Level())
+			for diff > 0 && len(keys) > 0 {
+				keys = keys[:len(keys)-1]
+				diff--
+			}
+		}
+
+		if len(keys) > 0 && keys[len(keys)-1] != n.Key() {
+			keys[len(keys)-1] = n.Key()
+		}
+
+		if len(keys) > 1 {
+			var tr map[string]interface{}
+			for i := range keys {
+				if i == len(keys)-1 {
+					result[keys[len(keys)-i-1]] = tr
+				} else if i == 0 {
+					tr = map[string]interface{}{
+						keys[len(keys)-i-1]: n.Value(),
+					}
+				} else {
+					tmpTr := tr
+					tr = map[string]interface{}{
+						keys[len(keys)-i-1]: tmpTr,
+					}
+				}
+			}
+		} else if len(keys) == 1 {
+			result[keys[0]] = n.Value()
+		}
+	}
+	return json.Marshal(result)
+}
+
+// Overrides json.Marshaller.UnmarshalJSON().
+func (s *NestedSet) UnmarshalJSON(data []byte) error {
+	var result map[string]interface{}
+	err := json.Unmarshal(data, &result)
+	if err != nil {
+		return err
+	}
+	s.nodes = make([]NodeInterface, 0)
+	s.rootNode = NewNode()
+	s.rootNode.SetRight(1)
+	s.rootNode.SetKey("root_node")
+	s.nodes = append(s.nodes, s.rootNode)
+
+	for k, v := range result {
+		err2 := recursiveUnmarshal(s, s.rootNode, k, v)
+		if err2 != nil {
+			return err2
+		}
+	}
+	return nil
+}
+
+func recursiveUnmarshal(s *NestedSet, parentNode NodeInterface, k string, v interface{}) error {
+	if val, ok := v.(map[string]interface{}); ok {
+		n := NewNode()
+		n.SetKey(k)
+		err3 := s.Add(n, parentNode)
+		if err3 != nil {
+			return err3
+		}
+		for k2, v2 := range val {
+			err := recursiveUnmarshal(s, n, k2, v2)
+			if err != nil {
+				return err
+			}
+		}
+	} else if val2, ok2 := v.([]interface{}); ok2 {
+		n := NewNode()
+		n.SetKey(k)
+		err3 := s.Add(n, parentNode)
+		if err3 != nil {
+			return err3
+		}
+		for k2, v2 := range val2 {
+			err := recursiveUnmarshal(s, n, fmt.Sprintf("%d", k2), v2)
+			if err != nil {
+				return err
+			}
+		}
+	} else if val3, ok3 := v.(string); ok3 {
+		n := NewNode()
+		n.SetKey(k)
+		n.SetValue(val3)
+		err3 := s.Add(n, parentNode)
+		if err3 != nil {
+			return err3
+		}
+	} else {
+		j, err2 := json.Marshal(v)
+		if err2 != nil {
+			return err2
+		}
+		n := NewNode()
+		n.SetKey(k)
+		n.SetValue(string(j))
+		err3 := s.Add(n, parentNode)
+		if err3 != nil {
+			return err3
+		}
+	}
+	return nil
 }
 
 // Adds new node to nested set. If `parent` nil, add node to root node.
